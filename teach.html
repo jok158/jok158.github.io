@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>平行四边形变换教学演示V16 - 图形更新版</title>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #fafafa; font-family: "Microsoft YaHei", sans-serif; overflow: hidden; }
+        canvas { background: white; box-shadow: 0 10px 40px rgba(0,0,0,0.1); margin-top: 20px; border-radius: 15px; }
+        .controls-left { position: absolute; left: 20px; bottom: 120px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); display: flex; flex-direction: column; gap: 15px; border: 1px solid #eee; }
+        .controls-bottom { position: absolute; bottom: 30px; display: flex; gap: 12px; align-items: center; background: white; padding: 15px 30px; border-radius: 50px; box-shadow: 0 4px 25px rgba(0,0,0,0.15); }
+        .slider-item { display: flex; flex-direction: column; font-size: 13px; color: #666; }
+        input[type="range"] { width: 160px; margin-top: 5px; cursor: pointer; }
+        button { padding: 10px 22px; cursor: pointer; background: #4a90e2; color: white; border: none; border-radius: 25px; font-weight: bold; transition: all 0.2s; outline: none; }
+        button:hover { background: #357abd; transform: translateY(-1px); }
+        button.active { background: #e67e22; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); }
+        #hCtrl { border-left: 2px solid #f0f0f0; padding-left: 15px; display: none; align-items: center; gap: 10px; }
+    </style>
+</head>
+<body>
+
+<canvas id="geoCanvas" width="950" height="550"></canvas>
+
+<div class="controls-left">
+    <div class="slider-item">底边长度: <input type="range" id="bIn" min="200" max="450" value="320"></div>
+    <div class="slider-item">高度: <input type="range" id="hIn" min="100" max="250" value="160"></div>
+    <div class="slider-item">斜边偏移: <input type="range" id="sIn" min="-180" max="180" value="100"></div>
+</div>
+
+<div class="controls-bottom">
+    <div id="hCtrl">
+        <span style="font-size:12px; color:#888;">移动尺子:</span>
+        <input type="range" id="hpIn" min="0" max="400" value="60">
+    </div>
+    <button id="btnFH" onclick="setMode('findHeight')">找高</button>
+    <button id="btnCut" onclick="setMode('cut')">剪一剪</button>
+    <button id="btnT2" onclick="setMode('trans2')">变换二(旋转)</button>
+    <button id="btnT3" onclick="setMode('trans3')">变换三(平移)</button>
+    <button onclick="reset()">重置</button>
+    <button onclick="randomize()" style="background:#7f8c8d">随机</button>
+</div>
+
+<script>
+const canvas = document.getElementById('geoCanvas');
+const ctx = canvas.getContext('2d');
+
+// 颜色常量 (保留了你之前的颜色修改)
+const THEME_FILL = '#66CCFF';
+const THEME_STROKE = '#0091ea';
+
+let S = { a: 320, h: 160, s: 100, hp: 60, mode: 'normal', progress: 0, cutProgress: 0 };
+
+function update() {
+    if (S.mode === 'cut') {
+        if (S.cutProgress < 1) {
+            S.cutProgress += 0.005;
+        } else if (S.progress < 1) {
+            S.progress += 0.008;
+        }
+    } else if (['trans2', 'trans3'].includes(S.mode) && S.progress < 1) {
+        S.progress += 0.008;
+    }
+    draw();
+    requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const startX = canvas.width/2 - S.a/2 - S.s/2;
+    const startY = canvas.height/2 + S.h/2;
+    const p1 = { x: startX, y: startY }, p2 = { x: startX + S.a, y: startY }; 
+    const p3 = { x: startX + S.a + S.s, y: startY - S.h }, p4 = { x: startX + S.s, y: startY - S.h }; 
+
+    if (S.mode === 'normal' || S.mode === 'findHeight') {
+        drawPoly([p1, p2, p3, p4], THEME_FILL, THEME_STROKE);
+        if (S.mode === 'findHeight') drawRuler(p1);
+    } 
+    else if (S.mode === 'cut') {
+        renderCutMove(p1, p2, p3, p4);
+    }
+    else if (S.mode === 'trans2') renderTransform2(p1, p2, p3, p4);
+    else if (S.mode === 'trans3') renderTransform3(p1, p2, p3, p4);
+}
+
+function drawPoly(pts, fill, stroke, isDash=false) {
+    ctx.beginPath();
+    ctx.setLineDash(isDash ? [5, 5] : []);
+    ctx.moveTo(pts[0].x, pts[0].y);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    ctx.strokeStyle = stroke; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawRuler(p1) {
+    const rx = p1.x + S.hp;
+    const rulerH = S.h + 80;
+    ctx.fillStyle = 'rgb(255, 184, 0)'; 
+    ctx.beginPath(); ctx.moveTo(rx, p1.y); ctx.lineTo(rx, p1.y - rulerH); ctx.lineTo(rx + 90, p1.y); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#B8860B'; ctx.lineWidth = 1; ctx.stroke();
+    const symSize = 15;
+    ctx.beginPath(); ctx.moveTo(rx, p1.y - symSize); ctx.lineTo(rx + symSize, p1.y - symSize); ctx.lineTo(rx + symSize, p1.y);
+    ctx.strokeStyle = '#666'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.setLineDash([4,4]); ctx.moveTo(rx, p1.y); ctx.lineTo(rx, p1.y - S.h);
+    ctx.strokeStyle = '#d35400'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+}
+
+function renderCutMove(p1, p2, p3, p4) {
+    const cx = p1.x + S.hp;
+    ctx.beginPath(); ctx.setLineDash([6, 4]); ctx.moveTo(cx, p1.y); ctx.lineTo(cx, p1.y - S.h);
+    ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+
+    const leftPart = [p1, {x:cx, y:p1.y}, {x:cx, y:p4.y}, p4];
+    const rightPart = [{x:cx, y:p1.y}, p2, p3, {x:cx, y:p4.y}];
+    
+    if (S.cutProgress < 1) {
+        drawPoly(leftPart, THEME_FILL, THEME_STROKE);
+        drawPoly(rightPart, THEME_FILL, THEME_STROKE);
+        const scissorY = (p1.y - S.h) + S.h * S.cutProgress;
+        drawNewScissors(cx, scissorY, S.cutProgress); // 使用新剪刀函数
+    } else {
+        const move = S.progress * S.a;
+        drawPoly(leftPart, null, '#ccc', true); 
+        ctx.save();
+        ctx.translate(move, 0);
+        drawPoly(leftPart, THEME_FILL, THEME_STROKE); 
+        ctx.restore();
+        drawPoly(rightPart, THEME_FILL, THEME_STROKE);
+    }
+}
+
+// ==========================================
+// 核心修改：重新实现的“黄色双圆环手柄剪刀”
+// ==========================================
+function drawNewScissors(x, y, progress) {
+    // 剪刀张开的角度（随切割进度变化）
+    const openAngle = Math.sin(progress * Math.PI * 16) * 0.15; 
+    const bladeLen = 65;
+    const handleDist = 35; // 手柄杆长度
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // 绘制剪刀的一半
+    function drawHalf(isLeft) {
+        ctx.save();
+        const side = isLeft ? -1 : 1;
+        ctx.rotate(side * openAngle);
+
+        // --- 绘制刀刃 (浅灰色) ---
+        ctx.fillStyle = "#EAEAEA"; // 浅灰
+        ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0); // 销钉中心
+        ctx.lineTo(side * 8, bladeLen); // 刀刃顶端
+        ctx.lineTo(0, bladeLen); // 刀刃底部（平直）
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+
+        // --- 绘制手柄杆 (和刀刃连成一体) ---
+        ctx.fillStyle = "#EAEAEA"; // 浅灰
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const handleConnectorX = side * handleDist * 0.9;
+        const handleConnectorY = -handleDist * 0.9;
+        ctx.lineTo(handleConnectorX, handleConnectorY);
+        ctx.lineTo(handleConnectorX - side*4, handleConnectorY + 2); // 杆子厚度
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+
+        // --- 绘制大而圆的黄色手柄圆环 ---
+        const handleRingX = side * handleDist;
+        const handleRingY = -handleDist;
+        const ringOuterR = 17; // 外圆半径
+        const ringInnerR = 9;  // 内圆镂空半径
+
+        ctx.fillStyle = "#FDD05D"; // 图片上的金黄色
+        ctx.beginPath();
+        // 外圆
+        ctx.arc(handleRingX, handleRingY, ringOuterR, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+
+        // 内圆镂空
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(handleRingX, handleRingY, ringInnerR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+
+        ctx.restore();
+    }
+
+    // 绘制左右两半
+    drawHalf(true); 
+    drawHalf(false); 
+
+    // --- 绘制中轴销钉 ---
+    ctx.fillStyle = "black";
+    ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#FDD05D"; // 销钉中心一点黄
+    ctx.beginPath(); ctx.arc(0, 0, 1.5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+}
+
+// ... renderTransform2, renderTransform3, getMidAndParts, drawMidPointTags 
+// ... setMode, reset, randomize, 各种oninput事件处理函数均保持不变
+// =========================================================================
+
+function renderTransform2(p1, p2, p3, p4) {
+    const m = getMidAndParts(p1, p2, p3, p4);
+    const angle = Math.PI * S.progress * (S.s >= 0 ? 1 : -1);
+    drawPoly(m.body, THEME_FILL, THEME_STROKE);
+    [ {pts: m.partL, center: m.midL}, {pts: m.partR, center: m.midR} ].forEach(obj => {
+        ctx.save(); ctx.translate(obj.center.x, obj.center.y); ctx.rotate(angle); ctx.translate(-obj.center.x, -obj.center.y);
+        drawPoly(obj.pts, '#ff7675', '#d63031'); ctx.restore();
+    });
+    drawMidPointTags(m.midL, m.midR);
+}
+
+function renderTransform3(p1, p2, p3, p4) {
+    const d = getMidAndParts(p1, p2, p3, p4);
+    drawPoly(d.body, THEME_FILL, THEME_STROKE);
+    ctx.save(); ctx.translate(S.a * S.progress, 0); drawPoly(d.partL, '#ff7675', '#d63031'); ctx.restore();
+    ctx.save(); ctx.translate(-S.a * S.progress, 0); drawPoly(d.partR, '#ff7675', '#d63031'); ctx.restore();
+    drawMidPointTags(d.midL, d.midR);
+}
+
+function getMidAndParts(p1, p2, p3, p4) {
+    const midL = { x: (p1.x + p4.x)/2, y: (p1.y + p4.y)/2 }, midR = { x: (p2.x + p3.x)/2, y: (p2.y + p3.y)/2 };
+    let partL, partR, body;
+    if (S.s >= 0) {
+        partL = [p1, {x: midL.x, y: p1.y}, midL]; partR = [p3, {x: midR.x, y: p3.y}, midR];
+        body = [midL, {x: midL.x, y: p1.y}, p2, midR, {x: midR.x, y: p3.y}, p4];
+    } else {
+        partL = [p4, {x: midL.x, y: p4.y}, midL]; partR = [p2, {x: midR.x, y: p2.y}, midR];
+        body = [midL, {x: midL.x, y: p4.y}, p3, midR, {x: midR.x, y: p2.y}, p1];
+    }
+    return { midL, midR, partL, partR, body };
+}
+
+function drawMidPointTags(ml, mr) {
+    ctx.fillStyle = 'black'; [ml, mr].forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, Math.PI*2); ctx.fill(); });
+    ctx.font = "bold 12px sans-serif"; ctx.fillText("中点", ml.x - 35, ml.y + 5); ctx.fillText("中点", mr.x + 10, mr.y + 5);
+}
+
+function setMode(m) {
+    if(S.mode === m && m === 'findHeight') { reset(); return; }
+    S.mode = m; S.progress = 0; S.cutProgress = 0;
+    document.getElementById('hCtrl').style.display = m === 'findHeight' ? 'flex' : 'none';
+    ['btnFH', 'btnCut', 'btnT2', 'btnT3'].forEach(id => document.getElementById(id).classList.toggle('active', id.toLowerCase().includes(m.toLowerCase())));
+}
+
+function reset() { setMode('normal'); }
+
+function randomize() {
+    S.a = 220 + Math.random()*150; S.h = 100 + Math.random()*120;
+    S.s = (Math.random() > 0.5 ? 1 : -1) * (50 + Math.random()*100); reset();
+}
+
+document.getElementById('bIn').oninput = e => { S.a = Number(e.target.value); reset(); };
+document.getElementById('hIn').oninput = e => { S.h = Number(e.target.value); reset(); };
+document.getElementById('sIn').oninput = e => { S.s = Number(e.target.value); reset(); };
+document.getElementById('hpIn').oninput = e => S.hp = Number(e.target.value);
+
+update();
+</script>
+</body>
+</html>
